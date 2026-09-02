@@ -19,16 +19,12 @@
   function parseNetworkName(chainId: bigint, defaultName: string): string {
     const id = Number(chainId);
     switch (id) {
-      case 57:
-        return 'Syscoin Mainnet';
-      case 570:
-        return 'zkSYS Mainnet';
+      case 57057:
+        return 'zkSYS';
       case 11155111:
         return 'Ethereum Sepolia';
-      case 17000:
-        return 'Ethereum Holesky';
-      case 1:
-        return 'Ethereum Mainnet';
+      case 560048:
+        return 'Ethereum Hoodi';
       default:
         // Si no está mapeada manualmente, muestra el nombre que reporta el provider o el ID
         return defaultName !== 'unknown' ? defaultName : `Chain ID: ${id}`;
