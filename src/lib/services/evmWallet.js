@@ -16,14 +16,14 @@ export async function connectPaliWallet() {
 
 // Obtiene el saldo nativo y la red de una dirección usando el provider conectado.
 export async function getWalletSnapshot(address) {
-  if (!provider) {
-    const ethereum = getEthereum()
-    if (!ethereum) throw new Error('No existe un provider EVM disponible.')
-    provider = new ethers.BrowserProvider(ethereum)
-  }
-  const [balance, network] = await Promise.all([provider.getBalance(address), provider.getNetwork()])
+  const ethereum = getEthereum()
+  if (!ethereum) throw new Error('No existe un provider EVM disponible.')
+  // Un cambio externo de red invalida la caché de BrowserProvider.
+  const snapshotProvider = new ethers.BrowserProvider(ethereum)
+  provider = snapshotProvider
+  const [balance, network] = await Promise.all([snapshotProvider.getBalance(address), snapshotProvider.getNetwork()])
   const config = getNetworkByChainId(network.chainId)
-  return { address, balance: ethers.formatEther(balance), symbol: config?.symbol || 'ETH', chainId: Number(network.chainId), network: config || { name: network.name, type: 'evm', chainId: Number(network.chainId), symbol: 'ETH' } }
+  return { address, balance: ethers.formatEther(balance), symbol: config?.symbol || 'ETH', chainId: Number(network.chainId), network: config || { id: `evm-${network.chainId}`, name: `Red ${network.chainId}`, type: 'evm', chainId: Number(network.chainId), symbol: 'ETH', decimals: 18 } }
 }
 
 export async function getBalance(address, networkConfig) {
@@ -57,7 +57,11 @@ export function subscribeToPaliEvents(callback) {
   return () => { ethereum.removeListener?.('accountsChanged', onAccountsChanged); ethereum.removeListener?.('chainChanged', onChainChanged) }
 }
 
-export function getEvmSigner() { if (!provider) throw new Error('Conecta Pali Wallet antes de enviar una transacción.'); return provider.getSigner() }
+export function getEvmSigner() {
+  if (!provider) throw new Error('Conecta Pali Wallet antes de enviar una transacción.')
+  provider = new ethers.BrowserProvider(getEthereum())
+  return provider.getSigner()
+}
 
 export async function switchEvmNetwork(network) {
   const ethereum = getEthereum()
@@ -65,8 +69,14 @@ export async function switchEvmNetwork(network) {
   try { await ethereum.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: network.chainIdHex }] }) }
   catch (error) {
     if (Number(error?.code) !== 4902) throw error
-    await ethereum.request({ method: 'wallet_addEthereumChain', params: [{ chainId: network.chainIdHex, chainName: network.name, rpcUrls: [network.rpcUrl], nativeCurrency: { name: network.symbol, symbol: network.symbol, decimals: network.decimals }, blockExplorerUrls: [network.explorer] }] })
+    await ethereum.request({ method: 'wallet_addEthereumChain', params: [{ chainId: network.chainIdHex, chainName: network.name, rpcUrls: [network.rpcUrl], nativeCurrency: { name: network.symbol, symbol: network.symbol, decimals: network.decimals }, blockExplorerUrls: [typeof network.explorer === 'string' ? network.explorer : network.explorer?.baseUrl].filter(Boolean) }] })
+    // Agregar una red no implica que la wallet cambie a ella; solicita el cambio por separado.
+    await ethereum.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: network.chainIdHex }] })
   }
   provider = new ethers.BrowserProvider(ethereum)
-  return getWalletSnapshot((await provider.send('eth_accounts', []))[0])
+  const [address] = await provider.send('eth_accounts', [])
+  if (!address) throw new Error('No hay una cuenta EVM activa en Pali Wallet.')
+  const snapshot = await getWalletSnapshot(address)
+  if (snapshot.chainId !== network.chainId) throw new Error(`Pali no cambió a ${network.name}. Revisa la red activa en la wallet e inténtalo otra vez.`)
+  return snapshot
 }

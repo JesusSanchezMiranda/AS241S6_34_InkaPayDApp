@@ -9,10 +9,15 @@
     if (!ctx) return;
 
     let animationFrameId;
+    let running = false;
+    let visible = false;
+    let lastDraw = 0;
     let width = 0;
     let height = 0;
     let dpr = 1;
 
+    // 30 fps basta para una animación ambiental y deja libres el resto de fotogramas.
+    const FRAME_MS = 1000 / 30;
     const GRID_SPACING = 28;
     const HOVER_RADIUS = 220;
     const HOVER_RADIUS_SQ = HOVER_RADIUS * HOVER_RADIUS;
@@ -21,7 +26,8 @@
     let dots = [];
 
     function initGrid() {
-      dpr = Math.min(window.devicePixelRatio || 1, 2);
+      // Un lienzo tan grande no necesita densidad 2x: con 1.5x se reduce ~44% el área a rasterizar.
+      dpr = Math.min(window.devicePixelRatio || 1, 1.5);
       const rect = canvasElement.getBoundingClientRect();
       width = rect.width;
       height = rect.height;
@@ -87,7 +93,8 @@
     let time = 0;
 
     function render() {
-      time += 0.02;
+      // 0.04 por fotograma a 30 fps mantiene la misma velocidad que 0.02 a 60 fps.
+      time += 0.04;
 
       if (mouse.active) {
         mouse.x += (mouse.targetX - mouse.x) * 0.12;
@@ -173,31 +180,61 @@
         const g = Math.round(242 + (85 - 242) * t);
         const b = Math.round(255 + (247 - 255) * t);
 
-        ctx.beginPath();
-        ctx.arc(dot.x, dot.y, dot.radius, 0, Math.PI * 2);
-
         if (dot.alpha > 0.4) {
+          ctx.beginPath();
+          ctx.arc(dot.x, dot.y, dot.radius, 0, Math.PI * 2);
           const glow = ctx.createRadialGradient(dot.x, dot.y, 0, dot.x, dot.y, dot.radius * 3);
           glow.addColorStop(0, `rgba(${r}, ${g}, ${b}, ${dot.alpha})`);
           glow.addColorStop(0.5, `rgba(168, 85, 247, ${dot.alpha * 0.5})`);
           glow.addColorStop(1, `rgba(13, 29, 50, 0)`);
           ctx.fillStyle = glow;
+          ctx.fill();
         } else {
+          // Un punto en reposo mide ~2.4 px: un rectángulo se ve igual y evita miles de arcos por fotograma.
           ctx.fillStyle = `rgba(148, 197, 255, ${dot.alpha})`;
+          ctx.fillRect(dot.x - dot.radius, dot.y - dot.radius, dot.radius * 2, dot.radius * 2);
         }
-        ctx.fill();
       }
+    }
 
-      animationFrameId = requestAnimationFrame(render);
+    function frame(now) {
+      if (!running) return;
+      animationFrameId = requestAnimationFrame(frame);
+      if (now - lastDraw < FRAME_MS) return;
+      lastDraw = now;
+      render();
+    }
+
+    function start() {
+      if (running) return;
+      running = true;
+      lastDraw = 0;
+      animationFrameId = requestAnimationFrame(frame);
+    }
+
+    function stop() {
+      running = false;
+      cancelAnimationFrame(animationFrameId);
+    }
+
+    // Solo se anima cuando el lienzo está a la vista y la pestaña está activa.
+    function sync() {
+      if (visible && !document.hidden) start();
+      else stop();
+    }
+
+    function handleResize() {
+      initGrid();
     }
 
     initGrid();
-    render();
+    const observer = new IntersectionObserver(
+      (entries) => { visible = entries[0].isIntersecting; sync(); },
+      { rootMargin: '100px' }
+    );
+    observer.observe(canvasElement);
 
-    const handleResize = () => {
-      initGrid();
-    };
-
+    document.addEventListener('visibilitychange', sync);
     window.addEventListener('resize', handleResize);
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('mouseleave', handleMouseLeave);
@@ -205,7 +242,9 @@
     window.addEventListener('touchend', handleTouchEnd);
 
     return () => {
-      cancelAnimationFrame(animationFrameId);
+      stop();
+      observer.disconnect();
+      document.removeEventListener('visibilitychange', sync);
       window.removeEventListener('resize', handleResize);
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseleave', handleMouseLeave);

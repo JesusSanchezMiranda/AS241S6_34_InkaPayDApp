@@ -9,14 +9,22 @@
     if (!ctx) return;
 
     let animationFrameId;
+    let running = false;
+    let visible = false;
+    let lastDraw = 0;
     let width = 0;
     let height = 0;
     let dpr = 1;
 
+    // 30 fps para una animación de fondo: libera la mitad de los fotogramas durante el desplazamiento.
+    const FRAME_MS = 1000 / 30;
+    const STEP = 10;
+
     let mouse = { x: -9999, y: -9999, active: false };
 
     function resize() {
-      dpr = Math.min(window.devicePixelRatio || 1, 2);
+      // 1.5x en lugar de 2x: este lienzo es muy alto y el área rasterizada cae ~44%.
+      dpr = Math.min(window.devicePixelRatio || 1, 1.5);
       const rect = canvasElement.getBoundingClientRect();
       width = rect.width;
       height = rect.height;
@@ -91,7 +99,7 @@
       grad.addColorStop(1, wave.colorStart);
       ctx.strokeStyle = grad;
 
-      const step = 6;
+      const step = STEP;
       let first = true;
 
       for (let x = 0; x <= width + step; x += step) {
@@ -155,7 +163,8 @@
     }
 
     function render() {
-      time += 0.016;
+      // 0.032 por fotograma a 30 fps equivale a 0.016 a 60 fps.
+      time += 0.032;
       ctx.clearRect(0, 0, width, height);
 
       // Draw background wave fills & lines
@@ -167,24 +176,56 @@
       drawNodes(WAVES[0], 18, 1.8, 1.5, 0.8);
       // Nodos tenues sobre la ola profunda (zona extendida hacia el desarrollador)
       drawNodes(WAVES[WAVES.length - 1], 12, 1.2, 1.0, 0.45);
+    }
 
-      animationFrameId = requestAnimationFrame(render);
+    function frame(now) {
+      if (!running) return;
+      animationFrameId = requestAnimationFrame(frame);
+      if (now - lastDraw < FRAME_MS) return;
+      lastDraw = now;
+      render();
+    }
+
+    function start() {
+      if (running) return;
+      running = true;
+      lastDraw = 0;
+      animationFrameId = requestAnimationFrame(frame);
+    }
+
+    function stop() {
+      running = false;
+      cancelAnimationFrame(animationFrameId);
+    }
+
+    // Solo se dibuja cuando el lienzo entra en pantalla y la pestaña está activa.
+    function sync() {
+      if (visible && !document.hidden) start();
+      else stop();
     }
 
     resize();
-    render();
+
+    const observer = new IntersectionObserver(
+      (entries) => { visible = entries[0].isIntersecting; sync(); },
+      { rootMargin: '100px' }
+    );
+    observer.observe(canvasElement);
 
     // Re-mide el lienzo cuando el contenedor cambie de tamaño (p. ej. al extenderse hasta el desarrollador)
     const resizeObserver = new ResizeObserver(() => resize());
     resizeObserver.observe(canvasElement);
 
+    document.addEventListener('visibilitychange', sync);
     window.addEventListener('resize', resize);
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('mouseleave', handleMouseLeave);
 
     return () => {
-      cancelAnimationFrame(animationFrameId);
+      stop();
+      observer.disconnect();
       resizeObserver.disconnect();
+      document.removeEventListener('visibilitychange', sync);
       window.removeEventListener('resize', resize);
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseleave', handleMouseLeave);

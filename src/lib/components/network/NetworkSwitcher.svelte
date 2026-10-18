@@ -1,4 +1,5 @@
 <script>
+  import NetworkIcon from './NetworkIcon.svelte';
   import { EVM_NETWORKS, UTXO_NETWORKS } from '../../config/networks.js';
   import { selectedNetwork, selectNetwork } from '../../stores/network.js';
   import { switchEvmNetwork } from '../../services/evmWallet.js';
@@ -13,11 +14,14 @@
   let changing = false;
 
   function setTab(tab) {
+    if (changing || activeTab === tab) return;
+    message = ''; error = '';
     activeTab = tab;
     onTabChange(tab);
   }
 
   async function change(network) {
+    if (changing || $selectedNetwork.id === network.id) return;
     message = '';
     error = '';
     changing = true;
@@ -41,279 +45,41 @@
   $: currentList = activeTab === 'utxo' ? UTXO_NETWORKS : EVM_NETWORKS;
 </script>
 
-<div class="network-switcher-wrap">
-  <!-- Tabs Selector Bar -->
-  <div class="tab-bar">
-    <button
-      class="tab-btn"
-      class:active={activeTab === 'evm'}
-      onclick={() => setTab('evm')}
-    >
-      <i class="ri-swap-box-line"></i> EVM Networks (Rollux / Sepolia) <span class="tab-badge">{EVM_NETWORKS.length}</span>
-    </button>
-
-    <button
-      class="tab-btn"
-      class:active={activeTab === 'utxo'}
-      onclick={() => setTab('utxo')}
-    >
-      <i class="ri-bit-coin-line"></i> UTXO Networks (Bitcoin / Syscoin) <span class="tab-badge">{UTXO_NETWORKS.length}</span>
-    </button>
+<div class="network-switcher-wrap" aria-busy={changing}>
+  <div class="tab-bar" role="group" aria-label="Tipo de red">
+    <button class:active={activeTab === 'evm'} aria-pressed={activeTab === 'evm'} onclick={() => setTab('evm')} disabled={changing}><i class="ri-swap-box-line" aria-hidden="true"></i> EVM <span>{EVM_NETWORKS.length}</span></button>
+    <button class:active={activeTab === 'utxo'} aria-pressed={activeTab === 'utxo'} onclick={() => setTab('utxo')} disabled={changing}><i class="ri-bit-coin-line" aria-hidden="true"></i> UTXO <span>{UTXO_NETWORKS.length}</span></button>
   </div>
-
-  <!-- Feedback Messages -->
-  {#if message}
-    <div class="feedback success"><i class="ri-checkbox-circle-fill"></i> {message}</div>
-  {/if}
-  {#if error}
-    <div class="feedback error"><i class="ri-error-warning-fill"></i> {error}</div>
-  {/if}
-
-  <!-- Network Cards Grid (3 Columns matching System Dark Theme) -->
-  <div class="cards-grid">
-    {#each currentList as network}
-      <div
-        class="net-card"
-        class:selected={$selectedNetwork.id === network.id}
-        onclick={() => change(network)}
-        onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') change(network); }}
-        tabindex="0"
-        role="button"
-      >
-        <div class="card-header">
-          <span class="symbol-pill">{network.symbol}</span>
-          <div class="net-info">
-            <h4 class="net-title">{network.name}</h4>
-            <span class="net-sub font-mono">
-              {network.symbol} · Chain ID: {network.type === 'evm' ? network.chainId : network.networkKey}
-            </span>
-          </div>
-          <span class="type-pill" class:evm={network.type === 'evm'}>
-            {network.type.toUpperCase()}
-          </span>
-        </div>
-
-        <div class="card-footer">
-          <button
-            class="switch-action-btn"
-            class:active={$selectedNetwork.id === network.id}
-            onclick={(e) => { e.stopPropagation(); change(network); }}
-            disabled={changing}
-          >
-            {#if $selectedNetwork.id === network.id}
-              <span class="active-label"><i class="ri-checkbox-circle-fill"></i> Red activa</span>
-            {:else}
-              <span>Seleccionar y conmutar</span> <i class="ri-arrow-right-line arrow"></i>
-            {/if}
-          </button>
-        </div>
-      </div>
+  {#if message}<p class="feedback success" role="status"><i class="ri-checkbox-circle-line" aria-hidden="true"></i>{message}</p>{/if}
+  {#if error}<p class="feedback error" role="alert">{error}</p>{/if}
+  <ul class="network-list" aria-label={activeTab === 'evm' ? 'Redes EVM' : 'Redes UTXO'}>
+    {#each currentList as network (network.id)}
+      <li><button class="network-row" class:selected={$selectedNetwork.id === network.id} aria-label={`Seleccionar ${network.name}`} aria-pressed={$selectedNetwork.id === network.id} onclick={() => change(network)} disabled={changing}>
+        <NetworkIcon {network} />
+        <span class="network-info"><strong>{network.name}</strong><small>{network.symbol} · {network.type === 'evm' ? `Chain ID ${network.chainId}` : network.networkKey}</small></span>
+        {#if network.testnet}<span class="testnet">Testnet</span>{/if}
+        <span class="selection" aria-hidden="true"><i class={$selectedNetwork.id === network.id ? 'ri-checkbox-circle-fill' : 'ri-arrow-right-s-line'}></i></span>
+      </button></li>
     {/each}
-  </div>
+  </ul>
 </div>
 
 <style>
-  .network-switcher-wrap {
-    display: flex;
-    flex-direction: column;
-    gap: 22px;
-  }
-
-  /* TABS BAR */
-  .tab-bar {
-    display: inline-flex;
-    align-items: center;
-    gap: 10px;
-    margin-bottom: 8px;
-    flex-wrap: wrap;
-  }
-
-  .tab-btn {
-    border: 1px solid rgba(148, 170, 255, 0.2);
-    background: rgba(11, 18, 38, 0.75);
-    color: #a6bbb1;
-    padding: 10px 22px;
-    border-radius: 12px;
-    font-size: 0.92rem;
-    font-weight: 600;
-    cursor: pointer;
-    display: inline-flex;
-    align-items: center;
-    gap: 10px;
-    transition: all 0.25s ease;
-  }
-
-  .tab-btn:hover {
-    color: #fff;
-    border-color: rgba(77, 242, 255, 0.4);
-  }
-
-  .tab-btn.active {
-    background: linear-gradient(135deg, #101938 0%, #0c1226 100%);
-    color: #fff;
-    border-color: var(--accent-lime);
-    box-shadow: 0 4px 20px rgba(77, 242, 255, 0.15);
-  }
-
-  .tab-badge {
-    background: rgba(77, 242, 255, 0.15);
-    color: var(--accent-lime);
-    font-size: 0.78rem;
-    font-weight: 700;
-    padding: 2px 8px;
-    border-radius: 999px;
-  }
-
-  /* CARDS GRID 3 COLUMNS MATCHING SYSTEM DARK THEME */
-  .cards-grid {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 20px;
-  }
-
-  .net-card {
-    background: linear-gradient(160deg, #101731 0%, #0c1226 100%);
-    color: #ffffff;
-    border: 1px solid rgba(148, 170, 255, 0.16);
-    border-radius: 18px;
-    padding: 20px;
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
-    gap: 20px;
-    cursor: pointer;
-    transition: all 0.25s ease;
-  }
-
-  .net-card:hover {
-    transform: translateY(-3px);
-    box-shadow: 0 12px 30px rgba(4, 8, 20, 0.5), 0 0 15px rgba(77, 242, 255, 0.15);
-    border-color: rgba(77, 242, 255, 0.4);
-  }
-
-  .net-card.selected {
-    border: 1px solid var(--accent-lime);
-    box-shadow: 0 0 20px rgba(77, 242, 255, 0.2);
-    background: linear-gradient(160deg, #121c3d 0%, #0e1630 100%);
-  }
-
-  .card-header {
-    display: flex;
-    align-items: flex-start;
-    gap: 12px;
-  }
-
-  .symbol-pill {
-    font-size: 0.75rem;
-    font-weight: 800;
-    padding: 4px 8px;
-    border-radius: 6px;
-    background: rgba(77, 242, 255, 0.12);
-    color: var(--accent-lime);
-    border: 1px solid rgba(77, 242, 255, 0.25);
-    flex: none;
-    font-family: ui-monospace, monospace;
-  }
-
-  .net-info {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    min-width: 0;
-  }
-
-  .net-title {
-    margin: 0;
-    font-size: 1.1rem;
-    color: #ffffff;
-    font-family: var(--font-heading);
-    font-weight: 700;
-  }
-
-  .net-sub {
-    font-size: 0.78rem;
-    color: #8ca69a;
-  }
-
-  .type-pill {
-    padding: 4px 10px;
-    border-radius: 8px;
-    font-size: 0.72rem;
-    font-weight: 700;
-    background: rgba(168, 85, 247, 0.14);
-    color: #c4b0ff;
-    border: 1px solid rgba(168, 85, 247, 0.28);
-    flex: none;
-  }
-
-  .type-pill.evm {
-    background: rgba(77, 242, 255, 0.12);
-    color: var(--accent-lime);
-    border-color: rgba(77, 242, 255, 0.25);
-  }
-
-  .card-footer {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    border-top: 1px solid rgba(148, 170, 255, 0.1);
-    padding-top: 14px;
-  }
-
-  .switch-action-btn {
-    border: 0;
-    background: transparent;
-    color: #a6bbb1;
-    font-size: 0.88rem;
-    font-weight: 600;
-    cursor: pointer;
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 0;
-    transition: color 0.2s ease;
-  }
-
-  .net-card:hover .switch-action-btn {
-    color: #4df2ff;
-  }
-
-  .switch-action-btn.active .active-label {
-    color: var(--accent-lime);
-    font-weight: 700;
-  }
-
-  .feedback {
-    padding: 12px 16px;
-    border-radius: 12px;
-    font-size: 0.88rem;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-
-  .feedback.success {
-    background: rgba(77, 242, 255, 0.1);
-    border: 1px solid rgba(77, 242, 255, 0.3);
-    color: #e2f9ff;
-  }
-
-  .feedback.error {
-    background: rgba(89, 38, 42, 0.8);
-    border: 1px solid rgba(255, 151, 151, 0.3);
-    color: #ffd1d1;
-  }
-
-  @media (max-width: 1024px) {
-    .cards-grid {
-      grid-template-columns: repeat(2, 1fr);
-    }
-  }
-
-  @media (max-width: 650px) {
-    .cards-grid {
-      grid-template-columns: 1fr;
-    }
-  }
+  .network-switcher-wrap{display:flex;flex-direction:column;gap:16px;min-height:0;flex:1}
+  .tab-bar{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;flex:none;padding:4px;border:1px solid var(--border-input);background:var(--surface-input);border-radius:12px}
+  button{font:inherit;cursor:pointer;color:var(--text-secondary);border:1px solid transparent;background:transparent}
+  .tab-bar button{display:flex;align-items:center;justify-content:center;gap:8px;padding:10px 14px;border-radius:9px;font-size:.82rem;font-weight:600}
+  .tab-bar button.active{color:var(--accent-primary);border-color:color-mix(in srgb,var(--accent-primary) 45%,transparent);background:color-mix(in srgb,var(--accent-primary) 9%,var(--surface-input))}
+  .tab-bar button>span{font-size:.68rem;padding:2px 7px;border-radius:6px;background:var(--bg-card)}
+  button:focus-visible{outline:2px solid var(--accent-primary);outline-offset:-3px}button:disabled{opacity:.55;cursor:wait}
+  .network-list{list-style:none;margin:0;padding:2px;display:flex;flex-direction:column;gap:6px;overflow-y:auto;min-height:0;scrollbar-gutter:stable}
+  .network-row{width:100%;display:flex;align-items:center;gap:12px;text-align:left;padding:10px 14px;background:var(--surface-input);border-color:var(--border-panel);border-radius:12px;transition:border-color .2s,background .2s}
+  .network-row:hover:not(:disabled){border-color:var(--border-input);background:var(--bg-card)}
+  .network-row.selected{border-color:color-mix(in srgb,var(--accent-primary) 65%,var(--border-input));background:color-mix(in srgb,var(--accent-primary) 5%,var(--surface-input))}
+  .network-info{min-width:0;flex:1;display:flex;flex-direction:column;gap:4px}.network-info strong{font-size:.88rem;font-weight:600;color:var(--text-primary);overflow-wrap:anywhere}.network-info small{font-size:.7rem;line-height:1.4}
+  .selection{font-size:1.15rem;flex:none;color:var(--text-secondary)}.selected .selection{color:var(--accent-primary)}
+  .testnet{font-size:.6rem;color:var(--accent-secondary);background:color-mix(in srgb,var(--accent-secondary) 8%,transparent);border-radius:6px;padding:4px 6px;flex:none}
+  .feedback{display:flex;align-items:center;gap:8px;margin:0;padding:10px 12px;border:1px solid var(--border-input);border-radius:10px;font-size:.75rem;line-height:1.45;flex:none;overflow-wrap:anywhere}.success{color:var(--accent-primary)}.error{color:var(--text-error)}
+  @media(min-width:1001px) and (max-height:800px){.network-switcher-wrap{gap:12px}.network-row{padding:10px 12px}.network-info strong{font-size:.83rem}.network-info small{font-size:.68rem}}
+  @media(prefers-reduced-motion:reduce){.network-row{transition:none}}
 </style>

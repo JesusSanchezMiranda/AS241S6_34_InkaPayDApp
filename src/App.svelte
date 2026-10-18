@@ -3,9 +3,12 @@
   import Home from './pages/Home.svelte';
   import Dashboard from './pages/Dashboard.svelte';
   import Networks from './pages/Networks.svelte';
+  import Remesas from './views/Remesas.svelte';
   import { connectPaliWallet, subscribeToPaliEvents } from './lib/services/evmWallet.js';
   import { setConnectedWallet, disconnectWallet, refreshWallet } from './lib/stores/wallet.js';
-  import logoImg from './assets/logo_inkapay.png';
+  import { selectNetwork } from './lib/stores/network.js';
+  import { getNetworkByChainId } from './lib/config/networks.js';
+  import logoImg from './assets/logo_inkapay.webp';
 
   let currentView = 'home';
   let errorMessage = '';
@@ -31,7 +34,11 @@
 
     unsubscribe = subscribeToPaliEvents(async ({ accounts, chainId }) => {
       if (!accounts?.length) return disconnectWallet();
-      await refreshWallet({ address: accounts[0], chainId });
+      try {
+        const activeNetwork = getNetworkByChainId(chainId) || { id: `evm-${chainId}`, name: `Red ${chainId}`, type: 'evm', chainId, symbol: 'ETH', decimals: 18 };
+        selectNetwork(activeNetwork);
+        await refreshWallet({ address: accounts[0], chainId });
+      } catch { errorMessage = 'No pudimos actualizar la cuenta o la red. Vuelve a conectar Pali.'; }
     });
 
     return () => {
@@ -46,7 +53,8 @@
     try {
       const result = await connectPaliWallet();
       await setConnectedWallet(result);
-      currentView = 'dashboard';
+      if (result.network?.type === 'evm' && result.network.chainId) selectNetwork(result.network);
+      if (currentView !== 'remesas') currentView = 'dashboard';
     } catch (error) {
       errorMessage = error?.message || 'No fue posible conectar Pali Wallet.';
     }
@@ -68,16 +76,17 @@
   <meta name="description" content="Wallet no custodial multi-red para remesas accesibles en Perú." />
 </svelte:head>
 
-<div class="app-shell">
+<div class="app-shell" class:finance-view={currentView !== 'home'}>
   <header class="topbar" class:scrolled={isScrolled}>
     <button class="brand" onclick={() => (currentView = 'home')} aria-label="Ir al inicio">
-      <img src={logoImg} alt="InkaPay Logo" class="brand-logo" />
+      <img src={logoImg} alt="InkaPay Logo" class="brand-logo" width="1024" height="576" decoding="async" />
       <span class="brand-name">InkaPay</span>
     </button>
 
     <nav aria-label="Navegación principal">
       <button class:active={currentView === 'home'} onclick={() => (currentView = 'home')}>Inicio</button>
       <button class:active={currentView === 'dashboard'} onclick={() => (currentView = 'dashboard')}>Billetera</button>
+      <button class:active={currentView === 'remesas'} onclick={() => (currentView = 'remesas')}>Remesas</button>
       <button class:active={currentView === 'networks'} onclick={() => (currentView = 'networks')}>Redes</button>
     </nav>
   </header>
@@ -90,6 +99,8 @@
     <Home onGoToWallet={() => (currentView = 'dashboard')} />
   {:else if currentView === 'dashboard'}
     <Dashboard onDisconnect={disconnect} onConnect={connect} />
+  {:else if currentView === 'remesas'}
+    <Remesas onConnect={connect} />
   {:else}
     <Networks />
   {/if}
@@ -115,15 +126,14 @@
     background: transparent;
     border-bottom: 1px solid transparent;
     box-shadow: none;
-    transition: background 0.3s ease, backdrop-filter 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease, padding 0.3s ease;
+    transition: background 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease, padding 0.3s ease;
   }
 
-  /* Estado con scroll: barra flotante con efecto vidrio esmerilado */
+  /* Estado con scroll: barra flotante. Evita backdrop-filter a ancho completo,
+     que obliga a recalcular el desenfoque en cada fotograma de desplazamiento. */
   .topbar.scrolled {
     padding: 14px clamp(24px, 5vw, 64px);
-    background: rgba(10, 14, 26, 0.7);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
+    background: rgba(10, 14, 26, 0.88);
     border-bottom: 1px solid rgba(148, 163, 184, 0.08);
     box-shadow: 0 16px 40px rgba(2, 8, 20, 0.65);
   }
@@ -190,10 +200,10 @@
     gap: 8px;
     margin-left: auto;
     padding: 4px;
-    background: rgba(16, 24, 51, 0.65);
+    background: rgba(16, 24, 51, 0.82);
     border: 1px solid rgba(148, 170, 255, 0.15);
     border-radius: 999px;
-    backdrop-filter: blur(12px);
+    backdrop-filter: blur(8px);
   }
 
   .topbar nav button {
