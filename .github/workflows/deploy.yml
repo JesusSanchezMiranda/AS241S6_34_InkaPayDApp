@@ -1,0 +1,141 @@
+name: CI - Docker Hub - Render
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      publish_only:
+        description: Publish image only (initial Render setup)
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+# Serialize runs on the same branch so production deployments keep their order.
+concurrency:
+  group: deploy-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  NODE_VERSION: '22'
+  VITE_ETHERSCAN_API_KEY: ${{ secrets.VITE_ETHERSCAN_API_KEY }}
+  VITE_TESTNET_HISTORY_PROVIDER: ${{ vars.VITE_TESTNET_HISTORY_PROVIDER || 'blockscout' }}
+
+jobs:
+  validate:
+    name: Tests and production build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+
+  docker:
+    name: Build, smoke test and publish image
+    needs: validate
+    if: github.event_name != 'pull_request' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      image_url: ${{ steps.publish.outputs.image_url }}
+    env:
+      IMAGE_NAME: docker.io/${{ vars.DOCKERHUB_USERNAME }}/${{ vars.DOCKERHUB_REPOSITORY || 'inkapay' }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Check deployment configuration
+        env:
+          DOCKERHUB_USERNAME: ${{ vars.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        shell: bash
+        run: |
+          for name in DOCKERHUB_USERNAME DOCKERHUB_TOKEN; do
+            if [[ -z "${!name}" ]]; then
+              echo "::error::Missing $name. See docs/despliegue.md."
+              exit 1
+            fi
+          done
+      - name: Check Render configuration
+        if: github.event_name != 'workflow_dispatch' || !inputs.publish_only
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          RENDER_SERVICE_ID: ${{ vars.RENDER_SERVICE_ID }}
+        shell: bash
+        run: |
+          for name in RENDER_API_KEY RENDER_SERVICE_ID; do
+            if [[ -z "${!name}" ]]; then
+              echo "::error::Missing $name. For first-time setup, run with publish_only enabled. See docs/despliegue.md."
+              exit 1
+            fi
+          done
+      - uses: docker/setup-buildx-action@v4
+      - name: Build image locally before publishing
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          load: true
+          push: false
+          platforms: linux/amd64
+          tags: |
+            ${{ env.IMAGE_NAME }}:sha-${{ github.sha }}
+            ${{ env.IMAGE_NAME }}:latest
+          build-args: |
+            VITE_ETHERSCAN_API_KEY=${{ env.VITE_ETHERSCAN_API_KEY }}
+            VITE_TESTNET_HISTORY_PROVIDER=${{ env.VITE_TESTNET_HISTORY_PROVIDER }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Check HTTP, SPA fallback and missing assets
+        shell: bash
+        run: |
+          docker run --detach --name inkapay-smoke --publish 127.0.0.1:8080:8080 "$IMAGE_NAME:sha-$GITHUB_SHA"
+          trap 'docker logs inkapay-smoke; docker rm --force inkapay-smoke' EXIT
+          curl --fail --retry 10 --retry-connrefused --retry-delay 2 http://127.0.0.1:8080/healthz
+          curl --fail --silent http://127.0.0.1:8080/ > /tmp/inkapay-index.html
+          grep -q '<div id="app"' /tmp/inkapay-index.html
+          curl --fail --silent http://127.0.0.1:8080/remesas > /tmp/inkapay-route.html
+          cmp /tmp/inkapay-index.html /tmp/inkapay-route.html
+          test "$(curl --silent --output /dev/null --write-out '%{http_code}' http://127.0.0.1:8080/assets/missing.js)" = '404'
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v4
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Publish tested image
+        id: publish
+        shell: bash
+        run: |
+          docker push "$IMAGE_NAME:sha-$GITHUB_SHA"
+          docker push "$IMAGE_NAME:latest"
+          echo "image_url=$IMAGE_NAME:sha-$GITHUB_SHA" >> "$GITHUB_OUTPUT"
+          echo "Image: \`$IMAGE_NAME:sha-$GITHUB_SHA\`" >> "$GITHUB_STEP_SUMMARY"
+
+  render:
+    name: Deploy image to Render and wait until live
+    needs: docker
+    if: github.event_name != 'workflow_dispatch' || !inputs.publish_only
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+      RENDER_SERVICE_ID: ${{ vars.RENDER_SERVICE_ID }}
+      RENDER_IMAGE_URL: ${{ needs.docker.outputs.image_url }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Deploy published image
+        run: node .github/scripts/deploy-render.mjs

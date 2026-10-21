@@ -4,6 +4,8 @@ DApp educativa en Svelte 5, Vite y ethers.js v6 para enviar activos desde Pali W
 
 ## Ejecutar
 
+Para contenedores y despliegue automático, consulta la [guía de Docker Hub y Render](docs/despliegue.md): incluye los comandos locales y las credenciales que debes configurar en GitHub Actions.
+
 ```bash
 npm install
 npm run dev
