@@ -26,7 +26,7 @@
       if (!ethers.isAddress(recipient)) throw new Error('La dirección destino no es una dirección EVM válida.');
       if (!amount || Number(amount) <= 0) throw new Error('Escribe un monto mayor que cero.');
       const value = ethers.toBeHex(ethers.parseUnits(sentAmount, network.decimals));
-      const signer = await getEvmSigner();
+      const signer = await getEvmSigner($wallet.address);
       const actualNetwork = await signer.provider.getNetwork();
       if (Number(actualNetwork.chainId) !== network.chainId || (await signer.getAddress()).toLowerCase() !== from?.toLowerCase())
         throw new Error('Cambió la cuenta o la red de Pali. Revisa los datos antes de enviar.');

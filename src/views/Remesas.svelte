@@ -39,7 +39,7 @@
   {#if $wallet.connected}
     <div class="workspace"><RemittanceForm recent={remittances} bind:busy={sending} /></div>
   {:else}
-    <section class="empty"><span class="empty-icon" aria-hidden="true"><i class="ri-hand-heart-line"></i></span><h2>Más cerca de quienes quieres</h2><p>Conecta tu wallet para elegir un beneficiario, enviar tu remesa y guardar un comprobante verificable.</p><button class="primary" onclick={connect} disabled={connecting}>{connecting ? 'Conectando con Pali…' : 'Conectar wallet'}</button><small>Tu wallet autoriza cada envío. InkaPay no guarda tus claves.</small></section>
+    <section class="empty"><span class="empty-icon" aria-hidden="true"><i class="ri-hand-heart-line"></i></span><h2>Más cerca de quienes quieres</h2><p>Conecta tu wallet para elegir un beneficiario, enviar tu remesa y guardar un comprobante verificable.</p><button class="primary" onclick={connect} disabled={connecting}>{connecting ? 'Esperando a Pali…' : 'Iniciar sesión'}</button><small>Tu wallet autoriza cada envío. InkaPay no guarda tus claves.</small></section>
   {/if}
   </FinanceLoading>
 </main>

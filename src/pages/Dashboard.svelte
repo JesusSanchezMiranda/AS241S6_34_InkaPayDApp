@@ -28,7 +28,7 @@
 <main class="container" aria-label="Billetera">
   <div class="dashboard-header">
     <h2>Mi Billetera</h2>
-    {#if !$wallet.connected}<button class="connect-btn" onclick={onConnect}>Conectar wallet</button>{/if}
+    {#if !$wallet.connected}<button class="connect-btn" onclick={onConnect}>Iniciar sesión</button>{/if}
   </div>
 
   <FinanceLoading variant="wallet" connected={$wallet.connected}>

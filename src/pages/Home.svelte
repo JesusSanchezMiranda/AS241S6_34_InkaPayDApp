@@ -266,7 +266,7 @@
         </h1>
         <p>InkaPay conecta personas con una wallet no custodial, multi-red y de bajo costo. Enviar dinero no debería significar perderlo en comisiones ni esperar días.</p>
         <div class="hero-actions">
-          <ConnectButton onConnect={onGoToWallet} />
+          <ConnectButton label="Iniciar sesión" onConnect={onGoToWallet} />
           <a class="secondary-btn" href="#about">Conocer el proyecto</a>
         </div>
       </div>

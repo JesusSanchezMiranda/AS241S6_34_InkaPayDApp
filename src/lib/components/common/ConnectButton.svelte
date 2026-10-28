@@ -1,8 +1,9 @@
 <script>
   export let onConnect = () => {};
+  export let label = 'Conectar wallet';
 </script>
 
-<button class="primary-btn" onclick={onConnect}>Conectar wallet</button>
+<button class="primary-btn" onclick={onConnect}>{label}</button>
 
 <style>
   .primary-btn {

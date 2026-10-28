@@ -29,7 +29,7 @@
       if ($wallet.connected) {
         const snapshot =
           network.type === 'evm'
-            ? await switchEvmNetwork(network)
+            ? await switchEvmNetwork(network, $wallet.address)
             : (await switchUtxoNetwork(network), await getUtxoSnapshot());
         await setConnectedWallet({ ...snapshot, network, symbol: network.symbol });
       }

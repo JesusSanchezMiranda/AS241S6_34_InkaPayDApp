@@ -82,7 +82,7 @@
     quoteTimer = setTimeout(async () => {
       estimating = true
       try {
-        const result = await prepareRemittance({ signer: await getEvmSigner(), network, to: to.trim(), amount, token })
+        const result = await prepareRemittance({ signer: await getEvmSigner($wallet.address), network, to: to.trim(), amount, token })
         if (alive && id === quoteId && key === quoteKey) { prepared = result; error = '' }
       } catch (e) { if (alive && id === quoteId) error = friendlyRemittanceError(e) }
       finally { if (alive && id === quoteId) estimating = false }
@@ -95,7 +95,7 @@
     busy = true; error = ''; clearTimeout(quoteTimer); quoteId += 1; estimating = true
     try {
       if (asset === 'usdc' && !token) throw new Error('USDC no está disponible en esta red.')
-      const quote = await prepareRemittance({ signer: await getEvmSigner(), network, to: to.trim(), amount, token })
+      const quote = await prepareRemittance({ signer: await getEvmSigner($wallet.address), network, to: to.trim(), amount, token })
       if (!alive || key !== contextKey) return
       prepared = quote; go(3)
     } catch (e) { if (alive && key === contextKey) error = friendlyRemittanceError(e) }
@@ -109,7 +109,7 @@
       penAmount: pen, feeNative, tokenAddress: token?.address || null }
     busy = true; error = ''; contextNotice = ''; clearTimeout(quoteTimer); quoteId += 1
     try {
-      const signer = await getEvmSigner()
+      const signer = await getEvmSigner($wallet.address)
       if ((await signer.getAddress()).toLowerCase() !== $wallet.address.toLowerCase()) throw new Error('Cambió la cuenta de Pali. Conecta de nuevo y revisa la remesa.')
       const sent = await sendRemittance({ signer, prepared: quote })
       // El saldo baja al transmitir y se reconcilia con la red al confirmar o fallar.
