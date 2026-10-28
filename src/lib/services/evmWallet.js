@@ -140,16 +140,6 @@ export async function chooseWalletAccount() {
   return { accounts, selectorOpened }
 }
 
-// Firma un mensaje con la cuenta elegida. No transmite ninguna transacción.
-export async function signAuthMessage(message, address) {
-  const ethereum = getEthereum()
-  if (!ethereum) throw new Error('No se encontró una wallet EVM compatible (Pali Wallet o MetaMask).')
-  const target = String(address || '').trim()
-  if (!target) throw new Error('Selecciona la cuenta con la que quieres iniciar sesión.')
-  const signer = await new ethers.BrowserProvider(ethereum).getSigner(target)
-  return signer.signMessage(message)
-}
-
 // Conserva el patrón de eventos probado en la implementación original.
 export function subscribeToPaliEvents(callback) {
   const ethereum = getEthereum()

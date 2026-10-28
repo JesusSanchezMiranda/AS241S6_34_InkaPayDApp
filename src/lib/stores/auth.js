@@ -1,10 +1,10 @@
 import { writable, get } from 'svelte/store'
-import { ethers } from 'ethers'
-import { connectPaliWallet, getAuthorizedAccounts, getWalletSnapshot, signAuthMessage } from '../services/evmWallet.js'
+import { chooseWalletAccount, getAuthorizedAccounts, getWalletSnapshot } from '../services/evmWallet.js'
 
 export const AUTH_SESSION_KEY = 'inkapay.auth.session.v1'
-// La sesión local caduca a las 24 horas; volver a firmar renueva el acceso.
+// La sesión local caduca a las 24 horas; volver a elegir la cuenta renueva el acceso.
 export const AUTH_SESSION_TTL_MS = 24 * 60 * 60 * 1000
+const AUTH_SESSION_VERSION = 2
 
 const anonymousState = () => ({
   status: 'anonymous',
@@ -50,42 +50,12 @@ function clearStoredSession() {
   }
 }
 
-function createChallenge(address, chainId, networkName) {
-  const issuedAt = Date.now()
-  const expiresAt = issuedAt + AUTH_SESSION_TTL_MS
-  const nonce = ethers.hexlify(ethers.randomBytes(16))
-  const domain = typeof window !== 'undefined' ? window.location.host : 'inkapay'
-  const message = [
-    `${domain} te invita a iniciar sesión en InkaPay.`,
-    '',
-    `Dirección: ${address}`,
-    `Red: ${networkName} (chainId ${chainId})`,
-    `Nonce: ${nonce}`,
-    `Emitido: ${new Date(issuedAt).toISOString()}`,
-    `Expira: ${new Date(expiresAt).toISOString()}`,
-    '',
-    'Firmar este mensaje no envía ninguna transacción ni genera costo de gas.',
-    'Solo demuestra que controlas esta wallet.'
-  ].join('\n')
-  return { message, nonce, issuedAt, expiresAt }
-}
-
-function isSignatureValid(session) {
-  if (!session?.address || !session?.message || !session?.signature) return false
-  try {
-    const recovered = ethers.verifyMessage(session.message, session.signature)
-    return recovered.toLowerCase() === String(session.address).toLowerCase()
-  } catch {
-    return false
-  }
-}
-
 function isSessionValid(session) {
   return Boolean(
     session &&
-    session.version === 1 &&
-    Number(session.expiresAt) > Date.now() &&
-    isSignatureValid(session)
+    session.version === AUTH_SESSION_VERSION &&
+    session.address &&
+    Number(session.expiresAt) > Date.now()
   )
 }
 
@@ -124,11 +94,11 @@ export function describeAuthError(error) {
 }
 
 /**
- * Inicia sesión con la cuenta elegida en el selector del login.
- * 1. Comprueba que la cuenta siga autorizada por la wallet.
- * 2. Firma un mensaje único (personal_sign), sin gas.
- * 3. Verifica localmente la firma y guarda una sesión de 24 h.
- * Sin cuenta preferida solicita acceso y usa la cuenta activa.
+ * Inicia sesión con la cuenta elegida en el selector de la wallet.
+ * 1. Abre el selector de Pali (o solicita permisos en wallets EIP-2255).
+ * 2. Toma la cuenta activa que devuelve la wallet.
+ * 3. Guarda una sesión local de 24 h, sin firmar mensajes ni enviar transacciones.
+ * Si se pasa una dirección, se usa solo si sigue autorizada.
  * Devuelve el snapshot de la wallet para actualizar el store compartido.
  */
 export async function signIn(preferredAddress) {
@@ -137,38 +107,32 @@ export async function signIn(preferredAddress) {
 
   try {
     const requested = String(preferredAddress || '').trim()
-    let snapshot
+    let address = requested
 
-    if (requested) {
+    if (address) {
       const authorized = await getAuthorizedAccounts()
-      const address = authorized.find((account) => account.toLowerCase() === requested.toLowerCase())
-      if (!address) {
+      const match = authorized.find((account) => account.toLowerCase() === address.toLowerCase())
+      if (!match) {
         throw new Error('La cuenta elegida ya no está autorizada en la wallet. Vuelve a elegirla e inténtalo de nuevo.')
       }
-      snapshot = await getWalletSnapshot(address)
+      address = match
     } else {
-      snapshot = await connectPaliWallet()
+      const result = await chooseWalletAccount()
+      address = result.accounts[0] || ''
+      if (!address) {
+        throw new Error('La wallet no devolvió ninguna cuenta. Desbloquéala e inténtalo de nuevo.')
+      }
     }
 
-    const networkName = snapshot.network?.name || `Red ${snapshot.chainId}`
-    const challenge = createChallenge(snapshot.address, snapshot.chainId, networkName)
-    const signature = await signAuthMessage(challenge.message, snapshot.address)
-    const recovered = ethers.verifyMessage(challenge.message, signature)
-
-    if (recovered.toLowerCase() !== snapshot.address.toLowerCase()) {
-      throw new Error('La firma no corresponde a la cuenta elegida. Inténtalo de nuevo.')
-    }
-
+    const snapshot = await getWalletSnapshot(address)
+    const issuedAt = Date.now()
     const session = {
-      version: 1,
+      version: AUTH_SESSION_VERSION,
       address: snapshot.address,
       chainId: snapshot.chainId,
-      networkName,
-      message: challenge.message,
-      signature,
-      nonce: challenge.nonce,
-      issuedAt: challenge.issuedAt,
-      expiresAt: challenge.expiresAt
+      networkName: snapshot.network?.name || `Red ${snapshot.chainId}`,
+      issuedAt,
+      expiresAt: issuedAt + AUTH_SESSION_TTL_MS
     }
 
     persistSession(session)
@@ -242,7 +206,7 @@ export async function restoreAuthSession() {
     auth.set(sessionState(session))
     return snapshot
   } catch {
-    // Un fallo de RPC no invalida la firma; se reintentará en la próxima carga.
+    // Un fallo de RPC no invalida la sesión; se reintentará en la próxima carga.
     if (get(auth).status === 'restoring') auth.set(anonymousState())
     return null
   }

@@ -4,29 +4,22 @@
   import { auth, signIn, signOut, describeAuthError } from '../lib/stores/auth.js'
   import { wallet } from '../lib/stores/wallet.js'
   import { selectedNetwork } from '../lib/stores/network.js'
-  import { chooseWalletAccount, getAuthorizedAccounts } from '../lib/services/evmWallet.js'
   import logoImg from '../assets/logo_inkapay.webp'
 
   export let onLoggedIn = () => {}
   export let onSignOut = () => {}
-  export let onSwitchAccount = () => {}
   export let onGoHome = () => {}
   export let redirectLabel = ''
 
   let providerAvailable = false
   let checkingProvider = true
-  let loadingAccounts = true
   let busy = false
-  let busyLabel = 'Esperando a Pali…'
+  let busyLabel = 'Elige tu cuenta en Pali…'
   let localError = ''
-  let selectionNotice = ''
-  let accounts = []
-  let selectedAccount = ''
   let copied = false
   let copiedTimer = 0
 
   const shortAddress = (value) => (value ? `${value.slice(0, 8)}…${value.slice(-6)}` : '')
-  const sameAddress = (a, b) => Boolean(a && b && a.toLowerCase() === b.toLowerCase())
   const formatDate = (value) => new Date(value).toLocaleString('es-PE', {
     day: '2-digit',
     month: 'short',
@@ -41,43 +34,8 @@
 
   $: if ($auth.authenticated) localError = ''
 
-  function setAccountList(list) {
-    const unique = []
-    for (const account of Array.isArray(list) ? list : []) {
-      if (typeof account !== 'string' || !account) continue
-      if (!unique.some((item) => sameAddress(item, account))) unique.push(account)
-    }
-    accounts = unique
-    if (selectedAccount && !unique.some((account) => sameAddress(account, selectedAccount))) selectedAccount = ''
-    if (!selectedAccount && unique.length) selectedAccount = unique[0]
-  }
-
-  async function refreshAccounts({ withSpinner = false } = {}) {
-    if (withSpinner) loadingAccounts = true
-    try {
-      setAccountList(await getAuthorizedAccounts())
-    } finally {
-      if (withSpinner) loadingAccounts = false
-    }
-  }
-
   onMount(() => {
     let detectionTimer = 0
-    let detachAccountEvents = () => {}
-
-    const attachAccountEvents = () => {
-      detachAccountEvents()
-      const ethereum = typeof window !== 'undefined' ? window.ethereum : null
-      if (!ethereum?.on) return
-      const onAccountsChanged = (nextAccounts) => {
-        // Con una sesión activa, App.svelte decide si debe invalidarla.
-        if (get(auth).authenticated) return
-        setAccountList(nextAccounts)
-        selectionNotice = ''
-      }
-      ethereum.on('accountsChanged', onAccountsChanged)
-      detachAccountEvents = () => ethereum.removeListener?.('accountsChanged', onAccountsChanged)
-    }
 
     const detectProvider = () => {
       if (typeof window === 'undefined') return
@@ -85,8 +43,6 @@
       if (providerAvailable) {
         checkingProvider = false
         window.clearTimeout(detectionTimer)
-        attachAccountEvents()
-        void refreshAccounts({ withSpinner: true })
       }
     }
 
@@ -96,71 +52,25 @@
     detectionTimer = window.setTimeout(() => {
       if (!providerAvailable) detectProvider()
       checkingProvider = false
-      if (!providerAvailable) loadingAccounts = false
     }, 1200)
 
     return () => {
       window.removeEventListener('ethereum#initialized', detectProvider)
       window.clearTimeout(detectionTimer)
       window.clearTimeout(copiedTimer)
-      detachAccountEvents()
     }
   })
 
-  function handleSelectAccount(account) {
-    selectedAccount = account
-    selectionNotice = ''
-    localError = ''
-  }
-
-  async function handleChooseAccount() {
-    if (busy || !providerAvailable) return
-    busy = true
-    busyLabel = accounts.length ? 'Abriendo el selector de cuentas…' : 'Esperando a Pali…'
-    localError = ''
-    selectionNotice = ''
-    try {
-      const result = await chooseWalletAccount()
-      setAccountList(result.accounts)
-      selectionNotice = result.selectorOpened
-        ? 'Cuenta lista. Revisa la dirección y pulsa Firmar y entrar.'
-        : 'Tu wallet no abrió un selector de cuentas. Cambia la cuenta desde Pali y pulsa Actualizar.'
-    } catch (error) {
-      localError = describeAuthError(error)
-      await refreshAccounts()
-    } finally {
-      busy = false
-    }
-  }
-
-  async function handleRefreshAccounts() {
-    if (busy || !providerAvailable) return
-    busy = true
-    busyLabel = 'Actualizando cuentas…'
-    localError = ''
-    selectionNotice = ''
-    try {
-      await refreshAccounts()
-      selectionNotice = accounts.length
-        ? 'Cuentas autorizadas actualizadas.'
-        : 'No hay cuentas autorizadas. Pulsa Conectar y elige una en tu wallet.'
-    } finally {
-      busy = false
-    }
-  }
-
   async function handleSignIn() {
-    if (busy || !selectedAccount) return
+    if (busy || !providerAvailable) return
     busy = true
-    busyLabel = 'Firmando el mensaje…'
+    busyLabel = 'Elige tu cuenta en Pali…'
     localError = ''
-    selectionNotice = ''
     try {
-      const snapshot = await signIn(selectedAccount)
+      const snapshot = await signIn()
       await onLoggedIn(snapshot)
     } catch (error) {
       localError = get(auth).error || describeAuthError(error)
-      await refreshAccounts()
     } finally {
       busy = false
     }
@@ -182,11 +92,6 @@
     signOut()
     onSignOut()
   }
-
-  function handleSwitchAccount() {
-    signOut()
-    onSwitchAccount()
-  }
 </script>
 
 <main class="login-page">
@@ -195,11 +100,11 @@
 
   <section class="login-layout">
     <div class="login-copy">
-      <div class="eyebrow"><span class="section-index">01</span> Acceso seguro</div>
+      <div class="eyebrow"><span class="section-index">01</span> Acceso con wallet</div>
       <h1>Tu cuenta Web3,<br /><span class="gradient-text">sin contraseñas.</span></h1>
       <p class="lead">
-        Elige la cuenta con la que quieres operar en InkaPay y firma un mensaje para demostrar que es tuya:
-        tus llaves nunca salen de Pali y no se envía ninguna transacción.
+        Elige la cuenta con la que quieres operar en InkaPay. Pali abrirá su selector y entrarás directo,
+        sin firmar mensajes ni enviar transacciones.
       </p>
 
       <ul class="trust-list">
@@ -208,8 +113,8 @@
           <div><strong>No custodial</strong><span>InkaPay no guarda claves privadas ni frases de recuperación.</span></div>
         </li>
         <li>
-          <span class="trust-icon" aria-hidden="true"><i class="ri-quill-pen-line"></i></span>
-          <div><strong>Firma sin gas</strong><span>El acceso solo verifica la propiedad de la cuenta. No cuesta ETH ni SYS.</span></div>
+          <span class="trust-icon" aria-hidden="true"><i class="ri-user-shared-line"></i></span>
+          <div><strong>Elige tu cuenta</strong><span>Pali muestra tus cuentas y tú decides con cuál entrar.</span></div>
         </li>
         <li>
           <span class="trust-icon" aria-hidden="true"><i class="ri-time-line"></i></span>
@@ -239,7 +144,7 @@
         <div class="session-view" aria-live="polite">
           <span class="session-icon" aria-hidden="true"><i class="ri-shield-check-line"></i></span>
           <h2>Bienvenido de nuevo</h2>
-          <p class="panel-sub">Tu wallet está conectada y la sesión se verificó correctamente.</p>
+          <p class="panel-sub">Tu wallet está conectada y la sesión está activa en este navegador.</p>
 
           <div class="account-card">
             <span class="account-label">Cuenta conectada</span>
@@ -264,14 +169,11 @@
             <i class="ri-logout-box-r-line" aria-hidden="true"></i>
             Cerrar sesión
           </button>
-          <button type="button" class="link-btn" onclick={handleSwitchAccount}>
-            Cambiar de cuenta
-          </button>
         </div>
       {:else}
         <div class="login-form" aria-live="polite">
-          <h2>Elige tu cuenta</h2>
-          <p class="panel-sub">Selecciona con qué cuenta quieres entrar. La wallet solo comparte las cuentas que autorizas.</p>
+          <h2>Inicia sesión con tu wallet</h2>
+          <p class="panel-sub">Pulsa el botón y elige tu cuenta en Pali. Entrarás directo a InkaPay, sin firmar mensajes.</p>
 
           <div class="wallet-card" class:detected={providerAvailable}>
             <span class="wallet-icon" aria-hidden="true"><i class="ri-wallet-3-line"></i></span>
@@ -295,65 +197,6 @@
             </div>
           {/if}
 
-          {#if providerAvailable}
-            <div class="account-picker" aria-busy={loadingAccounts || busy}>
-              <div class="picker-head">
-                <span class="account-label">Cuenta de acceso</span>
-                <div class="picker-tools">
-                  <button type="button" class="mini-btn" onclick={handleRefreshAccounts} disabled={busy || loadingAccounts} aria-label="Actualizar cuentas autorizadas" title="Actualizar cuentas autorizadas">
-                    <i class="ri-refresh-line" aria-hidden="true"></i>
-                  </button>
-                </div>
-              </div>
-
-              {#if loadingAccounts}
-                <div class="picker-loading" role="status">
-                  <span class="picker-spinner" aria-hidden="true"></span>
-                  Buscando cuentas autorizadas…
-                </div>
-              {:else if accounts.length}
-                <div class="account-options" role="group" aria-label="Cuentas disponibles para iniciar sesión">
-                  {#each accounts as account (account)}
-                    <button
-                      type="button"
-                      class="account-option"
-                      class:active={sameAddress(account, selectedAccount)}
-                      aria-pressed={sameAddress(account, selectedAccount)}
-                      disabled={busy}
-                      onclick={() => handleSelectAccount(account)}
-                      title={account}
-                    >
-                      <span class="account-avatar" aria-hidden="true">{account.slice(2, 4).toUpperCase()}</span>
-                      <span class="account-copy">
-                        <strong>{shortAddress(account)}</strong>
-                        <small>{sameAddress(account, selectedAccount) ? 'Cuenta seleccionada' : 'Toca para elegir esta cuenta'}</small>
-                      </span>
-                      <span class="account-check" aria-hidden="true">
-                        <i class={sameAddress(account, selectedAccount) ? 'ri-checkbox-circle-fill' : 'ri-circle-line'}></i>
-                      </span>
-                    </button>
-                  {/each}
-                </div>
-                <button type="button" class="picker-change" onclick={handleChooseAccount} disabled={busy || loadingAccounts}>
-                  <i class="ri-user-switch-line" aria-hidden="true"></i>
-                  Elegir otra cuenta en Pali
-                </button>
-              {:else}
-                <div class="account-empty">
-                  <span class="empty-icon" aria-hidden="true"><i class="ri-user-add-line"></i></span>
-                  <div><strong>Sin cuenta autorizada</strong><span>Conecta la wallet y elige la cuenta con la que quieres entrar.</span></div>
-                </div>
-              {/if}
-            </div>
-          {/if}
-
-          {#if selectionNotice}
-            <div class="alert info" role="status">
-              <i class="ri-information-line" aria-hidden="true"></i>
-              <span>{selectionNotice}</span>
-            </div>
-          {/if}
-
           {#if localError}
             <div class="alert error" role="alert">
               <i class="ri-error-warning-line" aria-hidden="true"></i>
@@ -361,40 +204,28 @@
             </div>
           {/if}
 
-          {#if accounts.length}
-            <button type="button" class="submit-btn" onclick={handleSignIn} disabled={busy || !selectedAccount || !providerAvailable}>
-              {#if busy}
-                <span class="spinner" aria-hidden="true"></span>
-                {busyLabel}
-              {:else}
-                <i class="ri-quill-pen-line" aria-hidden="true"></i>
-                Firmar y entrar
-              {/if}
-            </button>
-          {:else}
-            <button type="button" class="submit-btn" onclick={handleChooseAccount} disabled={busy || !providerAvailable}>
-              {#if busy}
-                <span class="spinner" aria-hidden="true"></span>
-                {busyLabel}
-              {:else}
-                <i class="ri-wallet-3-line" aria-hidden="true"></i>
-                Conectar y elegir cuenta
-              {/if}
-            </button>
-          {/if}
+          <button type="button" class="submit-btn" onclick={handleSignIn} disabled={busy || !providerAvailable}>
+            {#if busy}
+              <span class="spinner" aria-hidden="true"></span>
+              {busyLabel}
+            {:else}
+              <i class="ri-wallet-3-line" aria-hidden="true"></i>
+              Iniciar sesión
+            {/if}
+          </button>
 
           {#if redirectLabel}
             <p class="redirect-note"><i class="ri-arrow-right-line" aria-hidden="true"></i> Al iniciar sesión continuarás a <strong>{redirectLabel}</strong>.</p>
           {/if}
 
           <ol class="steps" aria-label="Pasos para iniciar sesión">
-            <li><span>1</span> Elige tu cuenta</li>
-            <li><span>2</span> Firma el mensaje</li>
-            <li><span>3</span> Accede a InkaPay</li>
+            <li><span>1</span> Pulsa el botón</li>
+            <li><span>2</span> Elige tu cuenta</li>
+            <li><span>3</span> Entra a InkaPay</li>
           </ol>
 
           <p class="fine-print">
-            La firma no mueve fondos. InkaPay solo crea una sesión local de 24 horas en este navegador.
+            No se firma ningún mensaje ni se envía ninguna transacción. InkaPay solo crea una sesión local de 24 horas en este navegador.
           </p>
 
           <button type="button" class="link-btn" onclick={onGoHome}>Explorar InkaPay sin iniciar sesión</button>
@@ -738,237 +569,6 @@
   .wallet-status.missing { color: #ffd27a; }
   .wallet-status.checking { color: var(--text-secondary); }
 
-  .account-picker {
-    margin-top: 10px;
-    padding: 11px;
-    border: 1px solid var(--border-input);
-    border-radius: var(--radius-control);
-    background: var(--surface-input);
-  }
-
-  .picker-head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 10px;
-  }
-
-  .account-label {
-    color: var(--text-secondary);
-    font-size: 0.66rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.12em;
-  }
-
-  .picker-tools {
-    display: flex;
-    align-items: center;
-    gap: 5px;
-  }
-
-  .mini-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 4px;
-    padding: 4px 7px;
-    border: 1px solid var(--border-input);
-    border-radius: 7px;
-    background: var(--bg-card);
-    color: var(--text-secondary);
-    font-family: var(--font-sans);
-    font-size: 0.66rem;
-    font-weight: 600;
-    cursor: pointer;
-    transition: border-color 0.2s ease, color 0.2s ease, background 0.2s ease;
-  }
-
-  .mini-btn:hover:not(:disabled) {
-    border-color: var(--accent-primary);
-    background: rgba(34, 211, 238, 0.08);
-    color: var(--accent-primary);
-  }
-
-  .mini-btn:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-
-  .picker-loading {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 10px 1px 2px;
-    color: var(--text-secondary);
-    font-size: 0.72rem;
-  }
-
-  .picker-spinner {
-    width: 14px;
-    height: 14px;
-    flex: none;
-    border: 2px solid rgba(34, 211, 238, 0.2);
-    border-top-color: var(--accent-primary);
-    border-radius: 50%;
-    animation: spin 0.8s linear infinite;
-  }
-
-  .account-options {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    margin-top: 8px;
-  }
-
-  .account-option {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    width: 100%;
-    padding: 8px 10px;
-    border: 1px solid var(--border-panel);
-    border-radius: 10px;
-    background: var(--bg-card);
-    color: var(--text-primary);
-    text-align: left;
-    font-family: var(--font-sans);
-    cursor: pointer;
-    transition: border-color 0.2s ease, background 0.2s ease;
-  }
-
-  .account-option:hover:not(:disabled) {
-    border-color: rgba(34, 211, 238, 0.45);
-  }
-
-  .account-option.active {
-    border-color: var(--accent-primary);
-    background: rgba(34, 211, 238, 0.08);
-    box-shadow: inset 0 0 0 1px rgba(34, 211, 238, 0.18);
-  }
-
-  .account-option:disabled {
-    opacity: 0.65;
-    cursor: wait;
-  }
-
-  .account-avatar {
-    display: grid;
-    place-items: center;
-    width: 30px;
-    height: 30px;
-    flex: none;
-    border: 1px solid rgba(34, 211, 238, 0.25);
-    border-radius: 9px;
-    background: rgba(34, 211, 238, 0.1);
-    color: var(--accent-primary);
-    font-family: var(--font-heading);
-    font-size: 0.66rem;
-    font-weight: 700;
-    letter-spacing: 0.04em;
-  }
-
-  .account-copy {
-    display: flex;
-    flex-direction: column;
-    gap: 1px;
-    min-width: 0;
-    flex: 1;
-  }
-
-  .account-copy strong {
-    font-family: 'Space Grotesk', monospace;
-    font-size: 0.8rem;
-    font-weight: 600;
-    overflow-wrap: anywhere;
-  }
-
-  .account-copy small {
-    color: var(--text-secondary);
-    font-size: 0.65rem;
-  }
-
-  .account-check {
-    flex: none;
-    color: var(--text-secondary);
-    font-size: 1.1rem;
-  }
-
-  .account-option.active .account-check {
-    color: var(--accent-primary);
-  }
-
-  .picker-change {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
-    width: 100%;
-    margin-top: 8px;
-    padding: 8px 10px;
-    border: 1px solid var(--border-input);
-    border-radius: 8px;
-    background: transparent;
-    color: var(--text-secondary);
-    font-family: var(--font-sans);
-    font-size: 0.7rem;
-    font-weight: 600;
-    cursor: pointer;
-    transition: border-color 0.2s ease, color 0.2s ease, background 0.2s ease;
-  }
-
-  .picker-change:hover:not(:disabled) {
-    border-color: var(--accent-primary);
-    background: rgba(34, 211, 238, 0.07);
-    color: var(--accent-primary);
-  }
-
-  .picker-change:disabled {
-    opacity: 0.55;
-    cursor: not-allowed;
-  }
-
-  .account-empty {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    margin-top: 9px;
-    padding: 11px;
-    border: 1px dashed var(--border-input);
-    border-radius: 10px;
-  }
-
-  .empty-icon {
-    display: grid;
-    place-items: center;
-    width: 34px;
-    height: 34px;
-    flex: none;
-    border-radius: 10px;
-    background: rgba(167, 139, 250, 0.12);
-    color: var(--accent-secondary);
-    font-size: 1.05rem;
-  }
-
-  .account-empty strong {
-    display: block;
-    font-size: 0.78rem;
-  }
-
-  .account-empty span:not(.empty-icon) {
-    display: block;
-    margin-top: 2px;
-    color: var(--text-secondary);
-    font-size: 0.68rem;
-    line-height: 1.45;
-  }
-
-  .alert.info {
-    border: 1px solid rgba(34, 211, 238, 0.3);
-    background: rgba(34, 211, 238, 0.08);
-    color: #c6f5ff;
-  }
-
   .alert {
     display: flex;
     align-items: flex-start;
@@ -1082,9 +682,6 @@
   .submit-btn:focus-visible,
   .secondary-btn:focus-visible,
   .link-btn:focus-visible,
-  .mini-btn:focus-visible,
-  .account-option:focus-visible,
-  .picker-change:focus-visible,
   .copy-btn:focus-visible {
     outline: 2px solid var(--accent-primary);
     outline-offset: 3px;
@@ -1327,20 +924,6 @@
       margin: 6px 0 16px;
     }
 
-    .account-picker {
-      margin-top: 10px;
-      padding: 10px;
-    }
-
-    .account-options {
-      gap: 6px;
-      margin-top: 7px;
-    }
-
-    .account-option {
-      padding: 7px 9px;
-    }
-
     .submit-btn {
       margin-top: 14px;
       padding: 11px 16px;
@@ -1372,7 +955,8 @@
     }
 
     .steps {
-      grid-template-columns: 1fr;
+      flex-direction: column;
+      align-items: flex-start;
       gap: 9px;
     }
 

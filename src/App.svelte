@@ -164,6 +164,14 @@
     }
   }
 
+  function goToWalletOrLogin() {
+    if (get(auth).authenticated) {
+      currentView = 'dashboard';
+      return;
+    }
+    openLogin();
+  }
+
   async function handleLoggedIn(snapshot) {
     errorMessage = '';
     await applyWalletSnapshot(snapshot);
@@ -185,14 +193,6 @@
     errorMessage = '';
     pendingView = '';
     currentView = 'home';
-  }
-
-  function handleSwitchAccount() {
-    signOut();
-    disconnectWallet();
-    errorMessage = '';
-    pendingView = '';
-    currentView = 'login';
   }
 
   function openLogin() {
@@ -249,12 +249,11 @@
   {/if}
 
   {#if currentView === 'home'}
-    <Home onGoToWallet={() => navigate('dashboard')} />
+    <Home onGoToWallet={goToWalletOrLogin} />
   {:else if currentView === 'login'}
     <Login
       onLoggedIn={handleLoggedIn}
       onSignOut={handleSignOut}
-      onSwitchAccount={handleSwitchAccount}
       onGoHome={() => navigate('home')}
       redirectLabel={pendingView === 'remesas' ? 'Remesas' : pendingView === 'dashboard' ? 'Billetera' : ''}
     />

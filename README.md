@@ -21,20 +21,17 @@ Si la pestaña conserva una estructura anterior después de actualizar el códig
 
 ## Iniciar sesión
 
-**Billetera** y **Remesas** requieren una sesión activa. Al pulsar **Iniciar sesión** (o al intentar entrar a una de esas vistas sin sesión), se muestra la pantalla de acceso con el mismo lenguaje visual de la DApp: paneles oscuros, acento cyan, iconos Remix y tipografía Space Grotesk.
+**Billetera** y **Remesas** requieren una sesión activa. Los botones **Iniciar sesión** del encabezado y del hero abren la pantalla de acceso con el mismo lenguaje visual de la DApp. Dentro de esa pantalla, el botón **Iniciar sesión** abre el selector de cuentas de la wallet: no hay un botón separado para elegir cuenta.
 
-La pantalla consulta con `eth_accounts` las cuentas que la DApp ya tiene autorizadas, sin abrir diálogos. Pali mantiene una cuenta conectada por origen, por lo que el panel muestra la autorizada y **Elegir otra cuenta en Pali** abre su selector nativo con `wallet_changeAccount`. En MetaMask u otras wallets EIP-2255, el mismo botón usa `wallet_requestPermissions`; si la wallet autoriza varias cuentas, la DApp las lista para elegir directamente en el login.
+1. **Elegir cuenta:** al pulsar **Iniciar sesión** en la pantalla de acceso, si aún no hay una cuenta autorizada la DApp solicita `eth_requestAccounts` y la wallet muestra su selector. Si ya hay una cuenta autorizada, usa `wallet_changeAccount` en Pali o `wallet_requestPermissions` en MetaMask y otras wallets EIP-2255. La cuenta activa que devuelve `eth_accounts` al cerrar el selector es la que inicia sesión.
+2. **Entrar:** no se firma ningún mensaje (`personal_sign`) ni se envía ninguna transacción. Al elegir la cuenta, la DApp crea la sesión y continúa directamente a **Billetera** o a la vista solicitada.
+3. **Sesión:** se guarda en `localStorage` durante 24 horas. Al recargar, la DApp consulta `eth_accounts` sin abrir diálogos y restaura la sesión solo si la cuenta guardada sigue entre las cuentas autorizadas, aunque la wallet tenga varias. Retirar esa cuenta o cerrar sesión invalida el acceso; cambiar de red actualiza la red activa sin volver a elegir cuenta.
 
-1. **Elegir cuenta:** si aún no hay una cuenta autorizada, **Conectar y elegir cuenta** solicita `eth_requestAccounts` y la wallet muestra su selector. Si ya hay cuentas autorizadas, aparecen en el panel; elige una o pulsa **Elegir otra cuenta en Pali** para abrir de nuevo el selector de la wallet. Si tu wallet no permite abrirlo desde la DApp, cambia la cuenta en la extensión y pulsa el botón **Actualizar**.
-2. **Firmar:** la wallet firma un mensaje único con dominio, dirección elegida, red, nonce y caducidad (`personal_sign`). No es una transacción y no consume gas.
-3. **Verificar:** la firma se comprueba en el navegador con `ethers.verifyMessage`. Si no corresponde a la cuenta elegida, no se crea la sesión.
-4. **Sesión:** se guarda en `localStorage` durante 24 horas. Al recargar, la DApp consulta `eth_accounts` sin abrir diálogos y restaura la sesión solo si la cuenta guardada sigue entre las cuentas autorizadas, aunque la wallet tenga varias. Retirar esa cuenta o cerrar sesión invalida el acceso; cambiar de red actualiza la red activa sin pedir otra firma.
-
-El encabezado muestra la cuenta abreviada y el botón de cerrar sesión cuando hay acceso activo. **Redes** y el contenido público de **Inicio** siguen disponibles sin iniciar sesión. InkaPay no recibe ni almacena claves privadas. La cuenta elegida se conserva en el resto de la app para firmar envíos, consultar historial y cambiar de red.
+El encabezado muestra la cuenta abreviada y el botón de cerrar sesión cuando hay acceso activo. **Redes** y el contenido público de **Inicio** siguen disponibles sin iniciar sesión. InkaPay no recibe ni almacena claves privadas. Para entrar con otra cuenta, cierra sesión y pulsa **Iniciar sesión** de nuevo: el selector de la wallet se abrirá otra vez. La cuenta elegida se conserva en el resto de la app para autorizar envíos, consultar historial y cambiar de red.
 
 ## Flujo de Remesas
 
-Sin sesión, **Billetera** y **Remesas** abren la pantalla de acceso; después de firmar, la DApp continúa a la vista solicitada. Si la sesión vence o la wallet se desconecta estando en Remesas, se muestra de nuevo el acceso indicando que continuarás a Remesas.
+Sin sesión, **Billetera** y **Remesas** abren la pantalla de acceso; después de elegir la cuenta, la DApp continúa a la vista solicitada. Si la sesión vence o la wallet se desconecta estando en Remesas, se muestra de nuevo el acceso indicando que continuarás a Remesas.
 
 1. **Beneficiario:** escribe una dirección y un alias o selecciona un contacto de la tercera columna. Puedes guardar, editar o eliminar beneficiarios en este navegador. Se valida con `ethers.isAddress` y se rechaza la dirección cero. El Paso 1 no muestra casilla de guardado: la acción Editar permite guardar el contacto desde su propia fila, sin modificar el envío; los demás destinatarios aparecen como frecuentes después de confirmar su remesa.
 2. **Monto:** elige moneda nativa o USDC cuando la red tiene un contrato configurado, escribe el monto, selecciona un motivo y agrega una referencia opcional. Atrás/Continuar conserva el borrador.
@@ -96,7 +93,7 @@ Los pendientes se verifican también mediante recibos RPC cuando vuelve a cargar
 
 ## Probar el flujo completo con Pali en testnet
 
-1. Ejecuta `npm run dev`, abre la URL y pulsa **Iniciar sesión**. Verifica la detección de Pali, elige la cuenta en el panel (o pulsa **Elegir otra cuenta en Pali** para abrir el selector de Pali), firma el mensaje de acceso y comprueba que la DApp continúa a **Billetera**. Si abres **Remesas** sin sesión, la pantalla de acceso indica que continuarás a Remesas después de firmar.
+1. Ejecuta `npm run dev`, abre la URL y pulsa **Iniciar sesión** en el encabezado o en el hero. En la pantalla de acceso, pulsa **Iniciar sesión**: Pali debe abrir su selector de cuentas, elige una y comprueba que la DApp continúa a **Billetera** sin pedir ninguna firma. Si abres **Remesas** sin sesión, la pantalla de acceso indica que continuarás a Remesas después de elegir la cuenta.
 2. En el selector del encabezado de **Remesas**, selecciona **Ethereum Sepolia** y acepta el cambio en Pali. Necesitas ETH de prueba para el monto y el gas, y una segunda dirección EVM que controles como beneficiario.
 3. Crea y guarda un beneficiario. Edita su alias en la propia lista, guarda y pulsa **Volver a elegir** para precargarlo en el Paso 1. Pulsa Continuar. Escribe un monto pequeño de ETH de prueba, elige **Apoyo familiar** y agrega una referencia. Usa Atrás y comprueba que no se pierde el monto.
 4. Continúa a Revisión, comprueba la red, el destinatario y el total, marca la confirmación y pulsa **Confirmar y enviar**. Autoriza en Pali. Verifica **Pendiente → Confirmada**, copia el hash, abre el explorador y descarga el comprobante PNG.
@@ -120,9 +117,9 @@ El [reporte punto por punto](docs/validacion-remesas.md) distingue implementaci�
 | Archivo | Responsabilidad |
 | --- | --- |
 | `src/views/Remesas.svelte` | Márgenes compartidos con Billetera, encabezado con selector y totales sin avisos superiores |
-| `src/pages/Login.svelte` | Acceso con Pali, selector de cuenta, detección de wallet, estados de sesión y diseño compartido |
-| `src/lib/stores/auth.js` | Reto firmado con la cuenta elegida, verificación local, sesión de 24 h y restauración sin diálogos |
-| `src/lib/services/evmWallet.js` | Selector de cuentas de Pali/EIP-2255, firma del mensaje de acceso y lectura silenciosa de cuentas autorizadas |
+| `src/pages/Login.svelte` | Acceso directo con Pali, detección de wallet, estados de sesión y diseño compartido |
+| `src/lib/stores/auth.js` | Sesión local de 24 h a partir de la cuenta elegida, sin firma, y restauración sin diálogos |
+| `src/lib/services/evmWallet.js` | Selector de cuentas de Pali/EIP-2255 y lectura silenciosa de cuentas autorizadas |
 | `src/App.svelte` | Acceso en el encabezado, protección de Billetera/Remesas, restauración y cierre de sesión |
 | `src/pages/Dashboard.svelte` | Retira el bloque de remesas de Billetera |
 | `src/lib/components/network/WalletNetworkSelect.svelte` | Selector compartido por Billetera y el encabezado de Remesas |
