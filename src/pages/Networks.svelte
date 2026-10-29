@@ -115,7 +115,6 @@
   .spin{animation:spin 1s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}
   @media(min-width:1001px) and (max-height:800px){.container{padding-top:84px;padding-bottom:16px;gap:18px}h1{font-size:1.55rem}.view-heading p{font-size:.75rem}.panel{padding:18px;gap:14px}.networks-workspace{gap:20px}.panel-heading p{font-size:.72rem}h2{font-size:.95rem}.query-content{gap:14px}.query-controls{gap:14px}.selected-net-banner{padding:12px}.primary-btn{padding:10px 14px}.query-placeholder{min-height:90px}.placeholder-icon{width:40px;height:40px;font-size:1.3rem}.sk-network{padding:10px 12px}}
   @media(max-width:1000px){.container{height:auto;min-height:100dvh;padding-top:100px}.public-badge{display:none}.networks-workspace{grid-template-columns:1fr;flex:none}.network-panel{height:570px}.query-panel{min-height:570px}.skeleton-panel{min-height:550px}.query-results{min-height:180px;max-height:400px}.query-content{overflow:visible}.sk-network-list{overflow:auto}}
-  @media(max-width:800px){.container{padding-top:154px}}
   @media(max-width:520px){.container{gap:20px;padding-left:16px;padding-right:16px}.view-heading h1{font-size:1.55rem}.view-heading p{font-size:.8rem}.panel{padding:16px;gap:16px}.heading-icon{width:32px;height:32px}.panel-heading{gap:10px}.panel-heading h2{font-size:.95rem}.query-mode-toggle button{font-size:.72rem;padding:9px 6px}.type-badge{font-size:.6rem}.selected-net-banner{padding:12px;gap:8px}}
   @media(prefers-reduced-motion:reduce){.spin{animation:none}}
 </style>

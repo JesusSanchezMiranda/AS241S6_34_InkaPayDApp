@@ -852,7 +852,7 @@
 
   @media (max-width: 1000px) {
     .login-page {
-      padding-top: 160px;
+      padding-top: 108px;
       padding-bottom: 48px;
       align-items: flex-start;
     }

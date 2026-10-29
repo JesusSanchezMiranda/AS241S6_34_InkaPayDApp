@@ -2,6 +2,8 @@
 
 DApp educativa en Svelte 5, Vite y ethers.js v6 para enviar activos desde Pali Wallet. Navegación: **Inicio | Billetera | Remesas | Redes**, con **Iniciar sesión** en el encabezado. Las operaciones de producción solicitan una firma a la wallet y se transmiten a la blockchain; no hay saldos ni envíos ficticios en la aplicación.
 
+En pantallas de **900 px o menos** el encabezado se convierte en un menú hamburguesa que abre un panel lateral con las cuatro vistas. La cuenta conectada, **Ver mi cuenta** y **Cerrar sesión** también viven en ese panel; el botón de acceso del encabezado se oculta para dejar sitio a la navegación. El menú cierra con **Escape**, al pulsar fuera o al elegir una opción, bloquea el scroll de fondo y respeta `prefers-reduced-motion`.
+
 ## Ejecutar
 
 Para contenedores y despliegue automático, consulta la [guía de Docker Hub y Render](docs/despliegue.md): incluye los comandos locales y las credenciales que debes configurar en GitHub Actions.
