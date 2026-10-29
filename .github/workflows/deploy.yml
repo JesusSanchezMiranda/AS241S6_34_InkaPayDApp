@@ -46,8 +46,6 @@ jobs:
     if: github.event_name != 'pull_request' && (github.ref == format('refs/heads/{0}', github.event.repository.default_branch) || github.ref == 'refs/heads/develop')
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    outputs:
-      image_url: ${{ steps.publish.outputs.image_url }}
     env:
       IMAGE_NAME: docker.io/${{ vars.DOCKERHUB_USERNAME || secrets.DOCKERHUB_USERNAME }}/${{ vars.DOCKERHUB_REPOSITORY || 'inkapay' }}
     steps:
@@ -117,19 +115,19 @@ jobs:
         run: |
           docker push "$IMAGE_NAME:sha-$GITHUB_SHA"
           docker push "$IMAGE_NAME:latest"
-          echo "image_url=$IMAGE_NAME:sha-$GITHUB_SHA" >> "$GITHUB_OUTPUT"
           echo "Image: \`$IMAGE_NAME:sha-$GITHUB_SHA\`" >> "$GITHUB_STEP_SUMMARY"
 
   render:
     name: Deploy image to Render and wait until live
     needs: docker
-    if: github.event_name != 'workflow_dispatch' || !inputs.publish_only
+    if: needs.docker.result == 'success' && (github.event_name != 'workflow_dispatch' || !inputs.publish_only)
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
       RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
       RENDER_SERVICE_ID: ${{ vars.RENDER_SERVICE_ID || secrets.RENDER_SERVICE_ID }}
-      RENDER_IMAGE_URL: ${{ needs.docker.outputs.image_url }}
+      # Se reconstruye aquí porque GitHub descarta los job outputs que contienen secretos.
+      RENDER_IMAGE_URL: docker.io/${{ vars.DOCKERHUB_USERNAME || secrets.DOCKERHUB_USERNAME }}/${{ vars.DOCKERHUB_REPOSITORY || 'inkapay' }}:sha-${{ github.sha }}
     steps:
       - uses: actions/checkout@v6
         with:
