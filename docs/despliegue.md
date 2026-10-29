@@ -23,7 +23,7 @@ El pipeline despliega la etiqueta `sha-<commit completo>`, no `latest`.
 | `DOCKERHUB_TOKEN` | secret | sí | Token con permiso de escritura |
 | `DOCKERHUB_REPOSITORY` | variable | no | Por defecto `inkapay` |
 | `RENDER_API_KEY` | secret | sí | API key del workspace dueño del servicio |
-| `RENDER_SERVICE_ID` | **variable** | sí | ID `srv-...` del web service |
+| `RENDER_SERVICE_ID` | **variable** | no | ID `srv-...` del web service. Si falta, no existe para la key, o hay un único web service que sirve la misma imagen, se resuelve automáticamente |
 | `VITE_ETHERSCAN_API_KEY` | secret | no | Se embebe en el build |
 | `VITE_TESTNET_HISTORY_PROVIDER` | variable | no | Por defecto `blockscout` |
 
@@ -37,7 +37,9 @@ Si todavía no existe el servicio en Render, ejecuta el workflow manualmente con
 
 ### `Render API returned HTTP 404`
 
-Significa que la API key no ve ese servicio: el ID es de otro workspace, el servicio fue eliminado o la key pertenece a otra cuenta. El script hace un preflight y, ante un 404, lista los servicios visibles para la key. Para verlos localmente:
+Significa que la API key no ve ese servicio: el ID es de otro workspace, el servicio fue eliminado o la key pertenece a otra cuenta. El script hace un preflight y, ante un 404, lista los servicios visibles para la key. Si **exactamente un** web service sirve la misma imagen que publica el pipeline, lo usa y deja un aviso `::warning::` en el log. Si hay varios, el deploy se detiene para no elegir el equivocado.
+
+Para verlos localmente:
 
 ```powershell
 $env:RENDER_API_KEY = "rnd_..."

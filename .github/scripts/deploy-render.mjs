@@ -73,10 +73,10 @@ async function listAccessibleServices({ apiKey, request }) {
   }
 }
 
-async function serviceNotFoundError({ apiKey, request, serviceId }) {
+async function serviceNotFoundError({ apiKey, request, serviceId, imageUrl }) {
   const services = await listAccessibleServices({ apiKey, request })
   const lines = [
-    `Render no encontró el servicio ${serviceId} con la RENDER_API_KEY configurada.`,
+    `Render no encontró el servicio ${serviceId ?? '(sin RENDER_SERVICE_ID)'} con la RENDER_API_KEY configurada.`,
     'Causas habituales: el ID pertenece a otro workspace, el servicio fue eliminado, o la key es de una cuenta distinta.',
   ]
   if (services === null) {
@@ -84,11 +84,46 @@ async function serviceNotFoundError({ apiKey, request, serviceId }) {
   } else if (services.length === 0) {
     lines.push('Esta key no ve ningún servicio. Crea la API key dentro del workspace que contiene el servicio de Render.')
   } else {
+    lines.push(`Ningún web service visible sirve la imagen ${imageRepository(imageUrl)}.`)
     lines.push(`Servicios visibles para esta key (${services.length}):`)
     lines.push(...services.map(describeService))
     lines.push('Copia el id srv-... del servicio web image-backed correcto y guárdalo en la variable RENDER_SERVICE_ID del repositorio.')
   }
   return new Error(lines.join('\n'))
+}
+
+/**
+ * Si RENDER_SERVICE_ID falta o quedó obsoleto, busca el servicio por imagen.
+ * Solo acepta una coincidencia única para no desplegar al servicio equivocado.
+ */
+async function resolveServiceByImage({ apiKey, request, imageUrl, serviceId }) {
+  const services = await listAccessibleServices({ apiKey, request })
+  if (services === null) {
+    throw new Error('No se pudo consultar Render. Verifica que RENDER_API_KEY sea válida y del workspace correcto.')
+  }
+
+  const repository = imageRepository(imageUrl)
+  const matches = services.filter(
+    (service) => service?.type === 'web_service' && imageRepository(serviceImage(service)) === repository,
+  )
+
+  if (matches.length === 1) {
+    const [match] = matches
+    const warning = `RENDER_SERVICE_ID ${serviceId ? `(${serviceId}) ` : ''}no es válido para esta API key; se usará ${match.id} (${match.name}) porque sirve ${repository}.`
+    console.log(process.env.GITHUB_ACTIONS ? `::warning::${warning}` : `Aviso: ${warning}`)
+    return match
+  }
+
+  if (matches.length > 1) {
+    throw new Error(
+      [
+        `Hay ${matches.length} web services que sirven ${repository}; define RENDER_SERVICE_ID para elegir uno:`,
+        ...matches.map(describeService),
+      ].join('\n'),
+    )
+  }
+
+  throw await serviceNotFoundError({ apiKey, request, serviceId, imageUrl })
 }
 
 export async function listRenderServices({ apiKey, request = fetch }) {
@@ -111,34 +146,38 @@ export async function deployRender({
   onStatus = () => {},
 }) {
   if (!apiKey) throw new Error('Missing RENDER_API_KEY')
-  if (!/^srv-[a-z0-9]+$/.test(serviceId ?? '')) throw new Error('Invalid RENDER_SERVICE_ID (expected srv-...)')
   if (!/^docker\.io\/[a-z0-9_-]+\/[a-z0-9._/-]+:sha-[a-f0-9]{40}$/.test(imageUrl ?? '')) {
     throw new Error('RENDER_IMAGE_URL must identify the Docker Hub image tagged with the full commit SHA')
   }
 
   const call = createClient({ apiKey, request })
-  const endpoint = `${API_BASE}/services/${serviceId}/deploys`
   const deadline = now() + timeoutMs
 
   // Preflight: confirma que el servicio existe para esta key y que la imagen coincide.
-  let service
-  try {
-    service = await call(`${API_BASE}/services/${serviceId}`)
-  } catch (error) {
-    if (error instanceof RenderApiError && error.status === 404) {
-      throw await serviceNotFoundError({ apiKey, request, serviceId })
+  let service = null
+  if (/^srv-[a-z0-9]+$/.test(serviceId ?? '')) {
+    try {
+      service = await call(`${API_BASE}/services/${serviceId}`)
+    } catch (error) {
+      if (error instanceof RenderApiError && error.status === 401) {
+        throw new Error('RENDER_API_KEY no es válida o fue revocada (HTTP 401). Genera una nueva en Render → Account Settings → API Keys.')
+      }
+      if (error instanceof RenderApiError && error.status === 403) {
+        throw new Error('RENDER_API_KEY no tiene permisos sobre ese servicio (HTTP 403). Usa una key del workspace dueño del servicio.')
+      }
+      if (!(error instanceof RenderApiError && error.status === 404)) throw error
     }
-    if (error instanceof RenderApiError && error.status === 401) {
-      throw new Error('RENDER_API_KEY no es válida o fue revocada (HTTP 401). Genera una nueva en Render → Account Settings → API Keys.')
-    }
-    if (error instanceof RenderApiError && error.status === 403) {
-      throw new Error('RENDER_API_KEY no tiene permisos sobre ese servicio (HTTP 403). Usa una key del workspace dueño del servicio.')
-    }
-    throw error
   }
 
+  if (!service) {
+    service = await resolveServiceByImage({ apiKey, request, imageUrl, serviceId })
+  }
+
+  const targetId = service.id ?? serviceId
+  const endpoint = `${API_BASE}/services/${targetId}/deploys`
+
   if (service?.type === 'static_site') {
-    throw new Error(`El servicio ${serviceId} es un static site; Render solo acepta deploy de imagen en servicios web image-backed.`)
+    throw new Error(`El servicio ${targetId} es un static site; Render solo acepta deploy de imagen en servicios web image-backed.`)
   }
 
   const configuredRepository = imageRepository(serviceImage(service))
@@ -155,7 +194,7 @@ export async function deployRender({
     deploy = await call(endpoint, { method: 'POST', body: JSON.stringify({ imageUrl }) })
   } catch (error) {
     if (error instanceof RenderApiError && error.status === 404) {
-      throw await serviceNotFoundError({ apiKey, request, serviceId })
+      throw await serviceNotFoundError({ apiKey, request, serviceId: targetId, imageUrl })
     }
     throw error
   }
@@ -169,7 +208,7 @@ export async function deployRender({
       onStatus(deploy.status)
       lastStatus = deploy.status
     }
-    if (deploy.status === 'live') return { id: deployId, status: deploy.status, serviceName: service?.name }
+    if (deploy.status === 'live') return { id: deployId, status: deploy.status, serviceId: targetId, serviceName: service?.name }
     if (failedStatuses.has(deploy.status)) throw new Error(`Render deployment ${deployId} ended with ${deploy.status}`)
     const remaining = deadline - now()
     if (remaining <= 0) throw new Error(`Timed out waiting for Render deployment ${deployId}. Check the Render dashboard.`)
@@ -194,7 +233,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
         imageUrl: process.env.RENDER_IMAGE_URL,
         onStatus: (status) => console.log(`Render: ${status}`),
       })
-      const dashboardUrl = `https://dashboard.render.com/web/${serviceId}/deploys/${result.id}`
+      const dashboardUrl = `https://dashboard.render.com/web/${result.serviceId}/deploys/${result.id}`
       console.log(`Render deployment is live${result.serviceName ? ` for ${result.serviceName}` : ''}: ${dashboardUrl}`)
       if (process.env.GITHUB_STEP_SUMMARY) {
         await appendFile(process.env.GITHUB_STEP_SUMMARY, `Render deployment: [${result.id}](${dashboardUrl}) — live\n`)

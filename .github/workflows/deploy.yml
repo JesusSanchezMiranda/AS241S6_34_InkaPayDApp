@@ -71,12 +71,10 @@ jobs:
           RENDER_SERVICE_ID: ${{ vars.RENDER_SERVICE_ID || secrets.RENDER_SERVICE_ID }}
         shell: bash
         run: |
-          for name in RENDER_API_KEY RENDER_SERVICE_ID; do
-            if [[ -z "${!name}" ]]; then
-              echo "::error::Missing $name. For first-time setup, run with publish_only enabled. See docs/despliegue.md."
-              exit 1
-            fi
-          done
+          if [[ -z "$RENDER_API_KEY" ]]; then
+            echo "::error::Missing RENDER_API_KEY. For first-time setup, run with publish_only enabled. See docs/despliegue.md."
+            exit 1
+          fi
       - uses: docker/setup-buildx-action@v4
       - name: Build image locally before publishing
         uses: docker/build-push-action@v7
